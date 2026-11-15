@@ -43,9 +43,9 @@ While 1,400 clips (350 per corpus) was sufficient for unsupervised PCA, gradient
 
 | Regime | Dataset Size | Recommended Architecture |
 |---|---|---|
-| Tiny (`1.4k–5k` clips) | Keep PCA frozen; only train a **256D per-dim weight + $\gamma(x)$ gate** (~1k params) |
-| Medium (`10k–20k` clips) | **Linear projector** (`2048→128`, `1024→128`, ~390k params) with strong weight decay |
-| Full (`50k–200k+` clips) | **Phase 1 MLP** or **Phase 2 Attentive Adapter** (1M–5M params) |
+| Tiny | `1.4k–5k` clips | Keep PCA frozen; only train a **256D per-dim weight + $\gamma(x)$ gate** (~1k params) |
+| Medium | `10k–20k` clips | **Linear projector** (`2048→128`, `1024→128`, ~390k params) with strong weight decay |
+| Full | `50k–200k+` clips | **Phase 1 MLP** or **Phase 2 Attentive Adapter** (1M–5M params) |
 
 Because the 577M backbone stays frozen, caching features for 100k+ clips requires only a single inference pass.
 

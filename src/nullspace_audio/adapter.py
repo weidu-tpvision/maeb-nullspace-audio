@@ -105,7 +105,12 @@ class NullSpaceMLPAdapter(nn.Module):
             return self.gamma_max * torch.sigmoid(self.gate(feats))  # [B, 1]
         return self.gamma_max * torch.sigmoid(self.gate_scalar).view(1, 1)
 
-    def compute_shift(self, x1: torch.Tensor, x2: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def compute_shift(
+        self,
+        x1: torch.Tensor,
+        x2: torch.Tensor,
+        gamma: float | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         z1 = self.proj1(x1)
         z2 = self.proj2(x2)
         weights = torch.softmax(self.block_logits, dim=0)
@@ -115,18 +120,24 @@ class NullSpaceMLPAdapter(nn.Module):
             dim=-1,
             eps=self.eps,
         )
-        gamma = self.compute_gamma(x1, x2)
-        shift = gamma * (z @ self.u_perp.T)
-        return shift, gamma
+        if gamma is None:
+            gamma_tensor = self.compute_gamma(x1, x2)
+        else:
+            gamma_tensor = z.new_full((z.shape[0], 1), float(gamma))
+        shift = gamma_tensor * (z @ self.u_perp.T)
+        return shift, gamma_tensor
 
     def forward(
         self,
         v_base: torch.Tensor,
         x1: torch.Tensor,
         x2: torch.Tensor,
+        gamma: float | None = None,
     ) -> torch.Tensor:
         v_base_f32 = F.normalize(v_base.to(torch.float32), p=2, dim=-1, eps=self.eps)
-        shift, _ = self.compute_shift(x1, x2)
+        if gamma == 0.0:
+            return v_base_f32
+        shift, _ = self.compute_shift(x1, x2, gamma=gamma)
         return F.normalize(v_base_f32 + shift, p=2, dim=-1, eps=self.eps)
 
     def save_safetensors(self, path: str | Path) -> None:

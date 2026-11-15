@@ -34,7 +34,8 @@ class MTEBNullSpaceAdapter:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--head", type=Path, required=True)
-    parser.add_argument("--gamma", type=float, default=1.0)
+    parser.add_argument("--head-type", choices=["pca", "mlp"], default="pca")
+    parser.add_argument("--gamma", type=float, default=None)
     parser.add_argument(
         "--tasks",
         nargs="+",
@@ -43,7 +44,11 @@ def main() -> None:
     parser.add_argument("--output-dir", type=Path, default=Path("results"))
     args = parser.parse_args()
 
-    wrapper = EmbeddingGemma2NullSpaceWrapper.from_pretrained(args.head, gamma=args.gamma)
+    wrapper = EmbeddingGemma2NullSpaceWrapper.from_pretrained(
+        args.head,
+        head_type=args.head_type,
+        gamma=args.gamma,
+    )
     adapter = MTEBNullSpaceAdapter(wrapper)
     tasks = mteb.get_tasks(tasks=args.tasks)
     evaluation = mteb.MTEB(tasks=tasks)

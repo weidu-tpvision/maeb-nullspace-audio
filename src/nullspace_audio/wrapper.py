@@ -6,6 +6,7 @@ from typing import Any
 import torch
 import torch.nn as nn
 
+from .adapter import NullSpaceMLPAdapter
 from .pca_head import NullSpaceAudioHead
 from .pooling import masked_mean_pool, masked_mean_std_pool
 
@@ -29,14 +30,14 @@ def _find_conformer_layers(model: nn.Module) -> nn.ModuleList:
 
 
 class EmbeddingGemma2NullSpaceWrapper(nn.Module):
-    """Wraps google/embeddinggemma-2 with a frozen 256D null-space head for audio."""
+    """Wraps google/embeddinggemma-2 with a frozen 256D null-space head or trained adapter."""
 
     def __init__(
         self,
         base_model: nn.Module,
         processor: Any,
-        head: NullSpaceAudioHead,
-        gamma: float = 1.0,
+        head: NullSpaceAudioHead | NullSpaceMLPAdapter,
+        gamma: float | None = 1.0,
         layer_a: int = 2,
         layer_b: int = 6,
     ) -> None:
@@ -56,9 +57,10 @@ class EmbeddingGemma2NullSpaceWrapper(nn.Module):
     def from_pretrained(
         cls,
         head_path: str | Path,
+        head_type: str = "pca",
         model_id: str = "google/embeddinggemma-2",
         revision: str | None = "914f7f89142e33e77833254d9c9b90c3cef7303b",
-        gamma: float = 1.0,
+        gamma: float | None = None,
         device: str | torch.device = "cuda" if torch.cuda.is_available() else "cpu",
         torch_dtype: torch.dtype = torch.bfloat16,
     ) -> EmbeddingGemma2NullSpaceWrapper:
@@ -74,7 +76,15 @@ class EmbeddingGemma2NullSpaceWrapper(nn.Module):
         for p in base_model.parameters():
             p.requires_grad_(False)
 
-        head = NullSpaceAudioHead.from_safetensors(head_path).to(device)
+        if head_type == "pca":
+            head: NullSpaceAudioHead | NullSpaceMLPAdapter = NullSpaceAudioHead.from_safetensors(head_path).to(device)
+            if gamma is None:
+                gamma = 1.0
+        elif head_type == "mlp":
+            head = NullSpaceMLPAdapter.from_safetensors(head_path).to(device)
+        else:
+            raise ValueError(f"Unknown head_type {head_type!r}; expected 'pca' or 'mlp'.")
+
         head.eval()
         return cls(base_model=base_model, processor=processor, head=head, gamma=gamma)
 
