@@ -2,7 +2,20 @@
 
 Reimplementation of Bruno Hays' zero-training null-space audio embedding method ([blog post](https://bruno-hays.github.io/posts/maeb-null-space-audio/), [model](https://huggingface.co/BrunoHays/embeddinggemma-2-nullspace-audio)), plus an experimental gradient-trained adapter extension for learning and comparison.
 
-## Core Idea
+## Summary of the Original Blog Post
+
+In [*Audio embeddings forget the voice: recovering it from intermediate layers takes EmbeddingGemma-2 to rank 1 on MAEB*](https://bruno-hays.github.io/posts/maeb-null-space-audio/), Bruno Hays demonstrates how to recover paralinguistic information from a frozen multimodal embedder **without training a single weight**:
+
+- **The Problem:** Audio encoders aligned to a text LLM learn *invariance* to who is speaking and how they sound—keeping *what* was said (95–99% on multilingual text-to-audio retrieval) while discarding speaker identity, pitch, emotion, and sound texture by the final layer (0.05% on VoxPopuli gender clustering, 19.7% on CREMA-D emotion).
+- **Where the Signal Lives:** Probing EmbeddingGemma-2's 12 Conformer layers individually reveals that **Layer 2** still holds speaker traits (~65% on VoxPopuli gender clustering) and **Layer 6** holds vocal emotion (39.5% on CREMA-D).
+- **Why It Can Be Added for Free (256D Null Space):** EmbeddingGemma-2's text backbone is 512D, projected linearly to 768D by a terminal matrix $W \in \mathbb{R}^{768 \times 512}$ with no activation function. Because every text embedding lies strictly in $\text{col}(W)$, SVD yields **256 orthogonal directions** ($U_\perp$) that text never touches—so any vector injected along $U_\perp$ has a **zero dot product** with all text embeddings.
+- **Headline Results:** Injecting PCA-compressed Layer 2 & 6 features into $U_\perp$ lifts the 30-task MAEB macro score from **49.3% → 54.4%** (Rank #16 → #1 overall, #26 → #1 audio-only), with major gains on VoxPopuli gender clustering (`0.05% → 63.1%`), Jamendo artist retrieval (`55.2% → 93.8%`), CREMA-D emotion (`19.7% → 40.2%`), and FSD2019 (`38.8% → 56.3%`).
+- **Why Semantic Audio Tasks Regress:**
+  - *Text-to-audio* is largely unaffected because $U_\perp$ is orthogonal to text.
+  - On *audio-to-audio semantic tasks* (SIB-FLEURS `57.2% → 21.3%`, MInDS14 `97.6% → 88.3%`, NMSQA `98.1% → 78.7%`), **both** clips carry the unweighted 256D acoustic vector. Cosine similarity then blends semantic and acoustic similarity, pushing apart clips with the same intent spoken by different voices or emotions.
+  - *No Matryoshka truncation for audio:* Because $U_\perp$ is spread across all 768 coordinates, truncating audio embeddings to 512/256/128D breaks the orthogonality and loses part of the acoustic signal.
+
+## Core Idea (Pipeline)
 
 1. **Extract the 256D null space** of `google/embeddinggemma-2`'s terminal linear projection $W \in \mathbb{R}^{768 \times 512}$ via SVD ($U_\perp \in \mathbb{R}^{768 \times 256}$). Any vector in $\text{span}(U_\perp)$ has zero dot product with all text embeddings.
 2. **Pool intermediate Conformer layers** from the frozen audio encoder:
